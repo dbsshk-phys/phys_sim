@@ -1,0 +1,347 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Pouring Puzzle</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            touch-action: manipulation;
+        }
+        .game-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            max-width: 90vw;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .cups-container {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            align-items: flex-end;
+            height: 250px;
+        }
+        .cup-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .cup {
+            width: 120px;
+            background-color: #e0e0e0;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid #333;
+            border-radius: 0 0 10px 10px;
+            transition: height 0.5s;
+        }
+        .water {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background-color: #3498db;
+            transition: height 0.5s;
+        }
+        .cup-label {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .cup-state {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        #cup-x-state {
+            color: #e74c3c;
+        }
+        #cup-y-state {
+            color: #2ecc71;
+        }
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        button {
+            padding: 15px;
+            font-size: 18px;
+            cursor: pointer;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+            font-size: 16px;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        #chart-container {
+            width: 100%;
+            height: 300px;
+            margin-top: 20px;
+        }
+        .capacity-controls {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+        .capacity-control {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        input[type="number"] {
+            width: 60px;
+            font-size: 18px;
+            padding: 5px;
+        }
+        @media (max-width: 768px) {
+            .game-container {
+                padding: 10px;
+            }
+            .cup {
+                width: 100px;
+            }
+            button {
+                padding: 12px;
+                font-size: 16px;
+            }
+            .cup-state {
+                font-size: 20px;
+            }
+        }
+    </style>
+<script defer="" data-domain="red-loralee-58.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script><script type="text/javascript" src="https://tiiny.host/ad-script.js"></script><script defer="" data-domain="red-loralee-58.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script><script type="text/javascript" src="https://tiiny.host/ad-script.js"></script></head>
+<body>
+    <div class="game-container">
+        <h1>Water Pouring Puzzle</h1>
+        <div class="capacity-controls">
+            <div class="capacity-control">
+                <label for="capacity-x">Cup X Capacity:</label>
+                <input type="number" id="capacity-x" min="1" max="12" value="3">
+            </div>
+            <div class="capacity-control">
+                <label for="capacity-y">Cup Y Capacity:</label>
+                <input type="number" id="capacity-y" min="1" max="12" value="5">
+            </div>
+            <button onclick="updateCapacities()">Update Capacities</button>
+        </div>
+        <br>
+        <div class="cups-container">
+            <div class="cup-wrapper">
+                <div id="cup-x" class="cup">
+                    <div id="water-x" class="water"></div>
+                </div>
+                <div class="cup-label">Cup X</div>
+                <div id="cup-x-state">0 / 3 L</div>
+            </div>
+            <div class="cup-wrapper">
+                <div id="cup-y" class="cup">
+                    <div id="water-y" class="water"></div>
+                </div>
+                <div class="cup-label">Cup Y</div>
+                <div id="cup-y-state">0 / 5 L</div>
+            </div>
+        </div>
+        <div class="buttons">
+            <button onclick="fill('x')">Fill X</button>
+            <button onclick="fill('y')">Fill Y</button>
+            <button onclick="empty('x')">Empty X</button>
+            <button onclick="empty('y')">Empty Y</button>
+            <button onclick="pour('x', 'y')">Pour X to Y</button>
+            <button onclick="pour('y', 'x')">Pour Y to X</button>
+            <button onclick="reset()">Reset</button>
+        </div>
+        <table id="state-table">
+            <tbody><tr>
+                <th>Step</th>
+                <th>State (X, Y)</th>
+            </tr>
+        </tbody></table>
+        <div id="chart-container">
+            <canvas id="stateChart"></canvas>
+        </div>
+    </div>
+    <script>
+        let capacities = { x: 3, y: 5 };
+        let volumes = { x: 0, y: 0 };
+        let step = 0;
+        let stateHistory = [];
+        let chart;
+
+        function updateDisplay() {
+            const maxCapacity = Math.max(capacities.x, capacities.y);
+            for (let cup in volumes) {
+                const cupElement = document.getElementById(`cup-${cup}`);
+                const waterElement = document.getElementById(`water-${cup}`);
+                const relativeHeight = (capacities[cup] / maxCapacity) * 200; // 200px is the max height
+                cupElement.style.height = `${relativeHeight}px`;
+                waterElement.style.height = `${(volumes[cup] / capacities[cup]) * 100}%`;
+                document.getElementById(`cup-${cup}-state`).textContent = `${volumes[cup]} / ${capacities[cup]} L`;
+            }
+        }
+
+        function recordState() {
+            const state = `(${volumes.x}, ${volumes.y})`;
+            stateHistory.push({ x: volumes.x, y: volumes.y });
+
+            const table = document.getElementById('state-table');
+            const row = table.insertRow(-1);
+            const cellStep = row.insertCell(0);
+            const cellState = row.insertCell(1);
+            cellStep.textContent = step;
+            cellState.textContent = state;
+
+            updateChart();
+            step++;
+        }
+
+        function fill(cup) {
+            volumes[cup] = capacities[cup];
+            updateDisplay();
+            recordState();
+        }
+
+        function empty(cup) {
+            volumes[cup] = 0;
+            updateDisplay();
+            recordState();
+        }
+
+        function pour(from, to) {
+            const amount = Math.min(volumes[from], capacities[to] - volumes[to]);
+            volumes[from] -= amount;
+            volumes[to] += amount;
+            updateDisplay();
+            recordState();
+        }
+
+        function reset() {
+            volumes = { x: 0, y: 0 };
+            step = 0;
+            stateHistory = [];
+            updateDisplay();
+            document.getElementById('state-table').innerHTML = '<tr><th>Step</th><th>State (X, Y)</th></tr>';
+            recordState(); // Record initial state
+            updateChart();
+        }
+
+        function updateCapacities() {
+            const newCapX = parseInt(document.getElementById('capacity-x').value);
+            const newCapY = parseInt(document.getElementById('capacity-y').value);
+
+            if (newCapX > 0 && newCapY > 0) {
+                capacities.x = newCapX;
+                capacities.y = newCapY;
+                reset();
+            } else {
+                alert("Please enter valid capacities (greater than 0)");
+            }
+        }
+
+        function updateChart() {
+            if (chart) {
+                chart.destroy();
+            }
+
+            const ctx = document.getElementById('stateChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'State History',
+                        data: stateHistory,
+                        pointBackgroundColor: 'rgba(255, 0, 0, 1)',
+                        pointBorderColor: 'rgba(255, 0, 0, 1)',
+                        showLine: true,
+                        fill: false,
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            min: 0,
+                            max: capacities.x,
+                            title: {
+                                display: true,
+                                text: 'Cup X Volume'
+                            },
+                            ticks: {
+                                stepSize: 1,
+                                callback: function(value, index, values) {
+                                    if (Math.floor(value) === value) {
+                                        return value;
+                                    }
+                                }
+                            }
+                        },
+                        y: {
+                            min: 0,
+                            max: capacities.y,
+                            title: {
+                                display: true,
+                                text: 'Cup Y Volume'
+                            },
+                                                        ticks: {
+                                stepSize: 1,
+                                callback: function(value, index, values) {
+                                    if (Math.floor(value) === value) {
+                                        return value;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    elements: {
+                        line: {
+                            tension: 0,
+                            borderWidth: 4,
+                            borderColor: 'red'
+                        }
+                    },
+                    maintainAspectRatio: false,
+                    responsive: true
+                }
+            });
+        }
+
+        updateDisplay();
+        reset(); // This will record the initial state and update the chart
+    </script>
+
+</body></html>
