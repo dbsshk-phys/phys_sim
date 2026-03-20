@@ -1,0 +1,414 @@
+<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orbit Simulation - Physical Scale</title>
+    <style>
+        :root {
+            --bg-color: #050507;
+            --panel-color: #121214;
+            --accent-color: #60a5fa;
+            --text-color: #f8fafc;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+        }
+        body {
+            display: flex;
+            flex-direction: row;
+        }
+        #leftPanel {
+            width: 320px;
+            min-width: 320px;
+            background-color: var(--panel-color);
+            padding: 24px;
+            box-sizing: border-box;
+            border-right: 1px solid #2d2d30;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            z-index: 10;
+        }
+        h2 { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--accent-color); letter-spacing: -0.02em; }
+        p.subtitle { margin: -15px 0 10px 0; font-size: 0.75rem; color: #64748b; }
+        #controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        label { font-size: 0.8rem; font-weight: 500; color: #94a3b8; }
+        button {
+            background: #27272a;
+            color: #e2e8f0;
+            border: 1px solid #3f3f46;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        button:hover { background: #3f3f46; border-color: #52525b; }
+        input[type="range"] { 
+            width: 100%; 
+            cursor: pointer;
+            accent-color: var(--accent-color);
+        }
+        .value-display {
+            font-family: "JetBrains Mono", monospace;
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+        #speedInfo {
+            font-size: 0.8rem;
+            line-height: 1.6;
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #2d2d30;
+        }
+        #canvasContainer {
+            flex-grow: 1;
+            position: relative;
+            background-color: #000;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        .info-tag {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            #leftPanel { width: 100%; height: 35%; border-right: none; border-bottom: 1px solid #2d2d30; }
+        }
+    </style>
+<script defer="" data-domain="indigo-charity-39.tiiny.site" src="https://analytics.tiiny.site/js/plausible.js"></script></head>
+<body>
+
+<div id="leftPanel">
+    <h2>Physical Scale Sim</h2>
+    <p class="subtitle">Earth, Moon, and Sun drawn to scale</p>
+    
+    <div id="controls">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button id="zoomIn">Zoom In</button>
+            <button id="zoomOut">Zoom Out</button>
+        </div>
+        <button id="toggleSpeeds">Toggle Orbital Data</button>
+        <button id="toggleMeasurements">Toggle Scale Data</button>
+        
+        <div class="control-group">
+            <label>Custom Orbit <span class="value-display"><span id="customValue">20000</span> km</span></label>
+            <input type="range" id="customRadius" min="6500" max="400000" step="500" value="20000">
+        </div>
+
+        <div class="control-group">
+            <label>Time Warp <span class="value-display"><span id="playbackValue">0.1</span> hr/f</span></label>
+            <input type="range" id="playbackSpeed" min="0.001" max="1.0" step="0.001" value="0.1">
+        </div>
+
+        <div class="control-group">
+            <label>View Factor <span class="value-display"><span id="zoomValue">1.000</span>X</span></label>
+            <input type="range" id="zoomSlider" min="0" max="1" step="0.0001" value="0.588">
+        </div>
+    </div>
+    <div id="speedInfo"></div>
+</div>
+
+<div id="canvasContainer">
+    <canvas id="orbitCanvas"></canvas>
+</div>
+
+<script>
+/*** 1) Constants (Physical values in km) ***/
+const R_EARTH = 6371;
+const R_ISS   = R_EARTH + 420;
+const R_PARK  = R_EARTH + 20000;
+const R_MOON  = 384400;
+const R_MOON_BODY = 1737;
+const R_SUN = 696340;
+const D_SUN = 149600000;
+
+const T_EARTH_ROTATION_HOURS = 24.0;
+const omegaEarth = (2 * Math.PI) / T_EARTH_ROTATION_HOURS;
+
+const T_ISS_HOURS  = 1.53;
+const T_PARK_HOURS = 24.0;
+const T_MOON_HOURS = 655.2;
+
+const omegaISS  = (2 * Math.PI) / T_ISS_HOURS;
+const omegaPARK = (2 * Math.PI) / T_PARK_HOURS;
+const omegaMOON = (2 * Math.PI) / T_MOON_HOURS;
+
+let dt = 0.1;
+let currentTime = 0.0;
+
+// Base view range is slightly larger than the Moon's orbit
+const baseViewRange = R_MOON * 1.2;
+const minEffective = R_EARTH / (baseViewRange * 1.5); 
+const maxEffective = 1000; 
+
+function computeEffectiveZoom(v) {
+    return Math.exp(Math.log(minEffective) + (1 - v) * (Math.log(maxEffective) - Math.log(minEffective)));
+}
+
+let effectiveZoom = computeEffectiveZoom(0.588);
+let showSpeeds = false;
+let showMeasurements = false;
+
+/*** 2) Physics Helpers ***/
+const SECONDS_PER_HOUR = 3600;
+const MU_EARTH = 398600.0;
+
+function orbitalSpeedKmS(r_km, period_h) {
+    if (period_h === 0) return 0;
+    return (2 * Math.PI * r_km) / (period_h * SECONDS_PER_HOUR);
+}
+
+function orbitalPeriodHours(r_km) {
+    if (r_km < R_EARTH) return 0;
+    let T_s = 2 * Math.PI * Math.sqrt(Math.pow(r_km, 3) / MU_EARTH);
+    return T_s / SECONDS_PER_HOUR;
+}
+
+function toScientific(num) {
+    return num.toExponential(3).replace('e+', ' × 10^');
+}
+
+let R_CUSTOM = 20000;
+let T_CUSTOM_HOURS = orbitalPeriodHours(R_CUSTOM);
+let omegaCUSTOM = (2 * Math.PI) / T_CUSTOM_HOURS;
+
+/*** 3) Canvas Management ***/
+const canvas = document.getElementById("orbitCanvas");
+const ctx = canvas.getContext("2d");
+const container = document.getElementById("canvasContainer");
+
+function resize() {
+    canvas.width = container.clientWidth;
+    canvas.height = container.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function kmToPx(km) {
+    let halfDim = Math.min(canvas.width, canvas.height) / 2;
+    return (km / (baseViewRange * effectiveZoom)) * halfDim;
+}
+
+/*** 4) Rendering Logic ***/
+function animate() {
+    update();
+    draw();
+    updateSpeedInfo();
+    requestAnimationFrame(animate);
+}
+
+function update() {
+    currentTime += dt;
+}
+
+function draw() {
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+
+    let sunRadiusPx = kmToPx(R_SUN);
+    let sunDistPx = kmToPx(D_SUN);
+    let sunX = -sunDistPx;
+
+    if (sunX + sunRadiusPx > -w) {
+        let gradient = ctx.createRadialGradient(sunX, 0, sunRadiusPx * 0.8, sunX, 0, sunRadiusPx * 1.2);
+        gradient.addColorStop(0, "rgba(251, 191, 36, 1)");
+        gradient.addColorStop(0.5, "rgba(251, 191, 36, 0.3)");
+        gradient.addColorStop(1, "rgba(251, 191, 36, 0)");
+        
+        ctx.beginPath();
+        ctx.fillStyle = gradient;
+        ctx.arc(sunX, 0, sunRadiusPx * 1.5, 0, 2 * Math.PI);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = "#fbbf24";
+        ctx.arc(sunX, 0, sunRadiusPx, 0, 2 * Math.PI);
+        ctx.fill();
+        drawLabel(sunX + sunRadiusPx, 0, "SUN (to scale)", "#fbbf24");
+    }
+
+    let earthPx = kmToPx(R_EARTH);
+    let eGrad = ctx.createRadialGradient(0, 0, earthPx * 0.9, 0, 0, earthPx * 1.1);
+    eGrad.addColorStop(0, "#1e40af");
+    eGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = eGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, earthPx * 1.2, 0, 2 * Math.PI);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.fillStyle = "#3b82f6";
+    ctx.arc(0, 0, earthPx, 0, 2 * Math.PI);
+    ctx.fill();
+    
+    const drawOrbit = (r_km, color) => {
+        let rPx = kmToPx(r_km);
+        if (rPx < 1) return;
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 0.5;
+        ctx.arc(0, 0, rPx, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    };
+
+    drawOrbit(R_ISS, "rgba(255,255,255,0.15)");
+    drawOrbit(R_PARK, "rgba(251,191,36,0.15)");
+    drawOrbit(R_MOON, "rgba(148,163,184,0.15)");
+    drawOrbit(R_CUSTOM, "rgba(34,197,94,0.15)");
+
+    const drawBody = (r_orbit, omega, body_r, label, color, isPoint = false) => {
+        let rPx = kmToPx(r_orbit);
+        let x = rPx * Math.cos(omega * currentTime);
+        let y = rPx * Math.sin(omega * currentTime);
+        let sizePx = kmToPx(body_r);
+
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        if (sizePx < 1.5 || isPoint) {
+            ctx.arc(x, y, 2, 0, 2 * Math.PI);
+        } else {
+            ctx.arc(x, y, sizePx, 0, 2 * Math.PI);
+        }
+        ctx.fill();
+        drawLabel(x, y, label, color, sizePx);
+    };
+
+    drawBody(R_MOON, omegaMOON, R_MOON_BODY, "MOON", "#94a3b8");
+
+    let obsX = earthPx * Math.cos(omegaEarth * currentTime);
+    let obsY = earthPx * Math.sin(omegaEarth * currentTime);
+    ctx.fillStyle = "#d946ef";
+    ctx.beginPath();
+    ctx.arc(obsX, obsY, 3, 0, 2 * Math.PI);
+    ctx.fill();
+    drawLabel(obsX, obsY, "SURFACE OBSERVER", "#d946ef");
+
+    drawBody(R_ISS, omegaISS, 0, "ISS", "#ef4444", true);
+    drawBody(R_PARK, omegaPARK, 0, "PARKING SAT", "#fbbf24", true);
+    drawBody(R_CUSTOM, omegaCUSTOM, 0, "CUSTOM SAT", "#22c55e", true);
+
+    ctx.restore();
+    drawScaleBar();
+}
+
+/*** 5. UI Helpers ***/
+function drawLabel(x, y, label, color, sizePx = 0) {
+    ctx.fillStyle = color;
+    ctx.font = "bold 10px sans-serif";
+    ctx.fillText(label, x + (sizePx || 5) + 5, y + 3);
+}
+
+function drawScaleBar() {
+    let halfDim = Math.min(canvas.width, canvas.height) / 2;
+    let kmPerPixel = (baseViewRange * effectiveZoom) / halfDim;
+    let scaleKm = 0;
+    let candidateDistance = kmPerPixel * 100;
+    let mag = Math.pow(10, Math.floor(Math.log10(candidateDistance)));
+    [1, 2, 5, 10].reverse().forEach(v => {
+        if (v * mag <= candidateDistance && scaleKm === 0) scaleKm = v * mag;
+    });
+
+    let scalePx = scaleKm / kmPerPixel;
+    ctx.strokeStyle = "white";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(20, canvas.height - 30);
+    ctx.lineTo(20 + scalePx, canvas.height - 30);
+    ctx.stroke();
+    ctx.fillStyle = "white";
+    ctx.font = "12px monospace";
+    ctx.fillText(scaleKm.toLocaleString() + " km", 20, canvas.height - 40);
+}
+
+function updateSpeedInfo() {
+    let speedDiv = document.getElementById("speedInfo");
+    let html = "";
+    if (showSpeeds) {
+        const getRow = (l, c, r) => {
+            let p = orbitalPeriodHours(r);
+            return `<div style="margin-bottom:4px"><span class="info-tag" style="background:${c}; color:black">${l}</span> v: <b>${orbitalSpeedKmS(r, p).toFixed(2)}</b> km/s</div>`;
+        };
+        html += "<strong>Velocity Data</strong><br/><br/>";
+        html += getRow("ISS", "#ef4444", R_ISS);
+        html += getRow("PARK", "#fbbf24", R_PARK);
+        html += getRow("MOON", "#94a3b8", R_MOON);
+        html += getRow("CUST", "#22c55e", R_CUSTOM);
+    }
+    if (showMeasurements) {
+        html += (html ? "<hr style='border:0; border-top:1px solid #2d2d30; margin:10px 0;'/>" : "") + "<strong>Physical Data (km)</strong><br/><br/>";
+        html += `<small style="color:#94a3b8">Radii:</small><br/>`;
+        html += `Earth: ${toScientific(R_EARTH)}<br/>`;
+        html += `Moon: ${toScientific(R_MOON_BODY)}<br/>`;
+        html += `Sun: ${toScientific(R_SUN)}<br/>`;
+        html += `<hr style="border:0; border-top:1px dashed #2d2d30; margin:8px 0;"/>`;
+        html += `<small style="color:#94a3b8">Distances:</small><br/>`;
+        html += `Earth-Moon: ${toScientific(R_MOON)}<br/>`;
+        html += `Earth-Sun: ${toScientific(D_SUN)}<br/>`;
+    }
+    speedDiv.innerHTML = html || "<small style='color:#64748b'>Toggle data buttons above to see physics info.</small>";
+}
+
+/*** 6. Interaction ***/
+const updateZoom = (v) => {
+    effectiveZoom = computeEffectiveZoom(v);
+    document.getElementById("zoomValue").textContent = effectiveZoom.toFixed(3);
+    document.getElementById("zoomSlider").value = v;
+};
+
+document.getElementById("zoomIn").onclick = () => updateZoom(Math.min(1, parseFloat(document.getElementById("zoomSlider").value) + 0.05));
+document.getElementById("zoomOut").onclick = () => updateZoom(Math.max(0, parseFloat(document.getElementById("zoomSlider").value) - 0.05));
+document.getElementById("zoomSlider").oninput = (e) => updateZoom(parseFloat(e.target.value));
+
+document.getElementById("toggleSpeeds").onclick = () => showSpeeds = !showSpeeds;
+document.getElementById("toggleMeasurements").onclick = () => showMeasurements = !showMeasurements;
+
+document.getElementById("customRadius").oninput = (e) => {
+    R_CUSTOM = parseFloat(e.target.value);
+    document.getElementById("customValue").textContent = R_CUSTOM;
+    T_CUSTOM_HOURS = orbitalPeriodHours(R_CUSTOM);
+    omegaCUSTOM = T_CUSTOM_HOURS > 0 ? (2 * Math.PI) / T_CUSTOM_HOURS : 0;
+};
+
+document.getElementById("playbackSpeed").oninput = (e) => {
+    dt = parseFloat(e.target.value);
+    document.getElementById("playbackValue").textContent = dt;
+};
+
+updateZoom(0.588);
+animate();
+</script>
+
+</body></html>
