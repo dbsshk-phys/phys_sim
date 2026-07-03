@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Periscope Physics Lab</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1a202c; color: white; font-family: sans-serif; touch-action: none; }
+        
+        #container { 
+            width: 100vw; 
+            height: 100vh; 
+            position: relative; 
+            overflow: hidden; 
+        }
+        
+        canvas.webgl-canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+        
+        /* UI Layer */
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 340px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px;
+            border-radius: 12px;
+            pointer-events: auto;
+            border: 1px solid #4a5568;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            max-height: 90vh;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        
+        /* Collapsed State (Desktop Default) */
+        #ui-layer.collapsed {
+            width: 200px;
+            overflow: hidden;
+        }
+
+        /* Mobile Optimization */
+        @media (max-width: 600px) {
+            #ui-layer {
+                width: calc(100vw - 40px); /* Full width minus margins */
+                left: 20px;
+                top: 20px;
+            }
+            
+            #ui-layer.collapsed {
+                width: auto; /* Shrink to fit content only */
+                min-width: 180px; /* Minimum clickable area */
+                max-width: fit-content;
+                white-space: nowrap;
+            }
+            
+            /* Slightly larger touch targets */
+            button, select, input[type=range] {
+                min-height: 36px; 
+            }
+        }
+        
+        #observer-frame {
+            width: 160px;
+            height: 160px;
+            background: #000;
+            border: 2px solid #fff;
+            margin: 15px auto 5px auto;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #observer-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #observer-frame::after {
+            content: '+';
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.3);
+            font-size: 20px;
+            pointer-events: none;
+        }
+        
+        /* Form Elements */
+        select, button, input[type=range] { pointer-events: auto; }
+        
+        select {
+            width: 100%;
+            background: #2d3748;
+            color: white;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #4a5568;
+            margin-bottom: 15px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #4a5568;
+            border-radius: 2px;
+        }
+
+        .btn-group { display: flex; gap: 8px; margin-bottom: 10px; }
+        
+        .obj-btn, .mode-btn, .rot-btn {
+            flex: 1;
+            padding: 8px 4px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            border: 1px solid #4a5568;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1.2;
+            cursor: pointer;
+            font-size: 11px;
+            background-color: #2d3748;
+            color: #a0aec0;
+        }
+        .obj-btn.active, .mode-btn.active, .rot-btn.active {
+            background-color: #3182ce;
+            border-color: #63b3ed;
+            color: white;
+            box-shadow: 0 0 8px rgba(66, 153, 225, 0.4);
+        }
+        .obj-btn:not(.active):hover, .mode-btn:not(.active):hover, .rot-btn:not(.active):hover {
+            background-color: #4a5568;
+        }
+
+        .action-btn {
+            width: 100%;
+            padding: 8px;
+            background-color: #4a5568;
+            color: white;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #718096;
+            transition: background 0.2s;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .action-btn:hover { background-color: #2d3748; }
+
+        .section-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #a0aec0;
+            margin-bottom: 6px;
+            margin-top: 10px;
+            font-weight: bold;
+            border-bottom: 1px solid #4a5568;
+            padding-bottom: 2px;
+        }
+        
+        .hidden-ctrl { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="container">
+    <div id="ui-layer">
+        <!-- New Header Row -->
+        <div class="flex justify-between items-center mb-3">
+            <h1 class="text-sm font-bold text-gray-200 uppercase tracking-wider whitespace-nowrap mr-2">Periscope Lab</h1>
+            <div class="flex space-x-1 shrink-0">
+                <button onclick="resetView()" title="Reset Camera View" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px] border border-gray-600">
+                    📷 Reset
+                </button>
+                <button id="toggle-btn" onclick="toggleUI()" title="Collapse Panel" class="bg-gray-700 hover:bg-gray-600 text-white w-6 h-6 rounded flex items-center justify-center border border-gray-600 text-sm font-bold">
+                    −
+                </button>
+            </div>
+        </div>
+
+        <!-- Collapsible Content -->
+        <div id="ui-content">
+            <!-- Main Mode Switcher -->
+            <div class="mb-2">
+                <label class="text-[10px] text-gray-400 font-bold uppercase block mb-1">Simulation Mode</label>
+                <select id="mode-selector" onchange="switchMode(this.value)">
+                    <option value="1">1. Basic (Z vs C Shape)</option>
+                    <option value="2">2. Advanced Rotation (Vertical)</option>
+                    <option value="3">3. Horizontal Periscope</option>
+                </select>
+            </div>
+
+            <!-- Object Selection -->
+            <div class="section-title">Object</div>
+            <div class="btn-group">
+                <button class="obj-btn active" onclick="setObject('square')">4-Color Square</button>
+                <button class="obj-btn" onclick="setObject('p')">Letter 'P'</button>
+                <button class="obj-btn" onclick="setObject('smiley')">Smiley</button>
+            </div>
+            
+            <!-- Sim 3 Specific: Rotate Object Choice -->
+            <div id="ctrl-sim3-obj" class="hidden-ctrl">
+                <div class="section-title">Object Orientation</div>
+                <div class="btn-group">
+                    <button class="rot-btn active" onclick="setObjectRotation(0)">0°</button>
+                    <button class="rot-btn" onclick="setObjectRotation(1)">90°</button>
+                    <button class="rot-btn" onclick="setObjectRotation(2)">180°</button>
+                    <button class="rot-btn" onclick="setObjectRotation(3)">270°</button>
+                </div>
+            </div>
+
+            <!-- Configuration / Rotation Controls -->
+            <div class="section-title">Configuration</div>
+            
+            <!-- Sim 1 Controls -->
+            <div id="ctrl-sim1" class="btn-group hidden-ctrl">
+                <button id="btn-z" class="mode-btn active" onclick="setSim1Mode(0)">
+                    <span class="font-bold text-sm">Z-Shape</span>
+                    <span class="text-[9px] opacity-80">(Front/Inverted)</span>
+                </button>
+                <button id="btn-c" class="mode-btn" onclick="setSim1Mode(180)">
+                    <span class="font-bold text-sm">C-Shape</span>
+                    <span class="text-[9px] opacity-80">(Back/Upright)</span>
+                </button>
+            </div>
+
+            <!-- Sim 2 & 3 Controls (Slider) -->
+            <div id="ctrl-slider" class="hidden-ctrl mb-4">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-bold text-gray-300">Rotation Angle</span>
+                    <span class="text-xs font-mono text-blue-300"><span id="angle-val">0</span>°</span>
+                </div>
+                <input type="range" id="rotation-slider" min="0" max="360" value="0" step="1" class="w-full">
+            </div>
+
+            <!-- Observer View -->
+            <div class="mb-1 text-sm font-bold text-center mt-2">Observer's View</div>
+            <div id="observer-frame">
+                <canvas id="observer-canvas" width="256" height="256"></canvas>
+            </div>
+            
+            <div class="mt-4 border-t border-gray-600 pt-3 text-xs text-gray-300 grid grid-cols-2 gap-2">
+                <div class="flex items-center"><span class="w-2 h-2 rounded-full bg-red-500 mr-1"></span> Top-Left Ray</div>
+                <div class="flex items-center"><span class="w-2 h-2 rounded-full bg-green-500 mr-1"></span> Top-Right Ray</div>
+                <div class="flex items-center"><span class="w-2 h-2 rounded-full bg-blue-500 mr-1"></span> Btm-Left Ray</div>
+                <div class="flex items-center"><span class="w-2 h-2 rounded-full bg-yellow-500 mr-1"></span> Btm-Right Ray</div>
+            </div>
+            
+            <p id="status-text" class="text-xs mt-2 text-center font-mono font-bold text-green-400 hidden-ctrl">UPRIGHT</p>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- UI Logic ---
+    function toggleUI() {
+        const layer = document.getElementById('ui-layer');
+        const content = document.getElementById('ui-content');
+        const btn = document.getElementById('toggle-btn');
+        
+        layer.classList.toggle('collapsed');
+        
+        if (layer.classList.contains('collapsed')) {
+            content.style.display = 'none';
+            btn.innerText = '+';
+        } else {
+            content.style.display = 'block';
+            btn.innerText = '−';
+        }
+    }
+
+    function resetView() {
+        // Reset camera based on current mode
+        if (currentMode === 1 || currentMode === 2) {
+            // Vertical Default
+            camera.position.set(35, 20, 45);
+            controls.target.set(0, 8, 0);
+        } else {
+            // Horizontal Default
+            camera.position.set(40, 25, 20);
+            controls.target.set(0, 0, -10);
+        }
+        controls.update();
+    }
+
+    // --- Global State ---
+    let currentMode = 1; 
+    let currentObjectType = 'square';
+    let currentObjectRotation = -Math.PI / 2; 
+    
+    // --- Three.js Setup ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a202c);
+    
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    
+    renderer.domElement.className = "webgl-canvas";
+    const container = document.getElementById('container');
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    const gridHelper = new THREE.GridHelper(100, 50, 0x444444, 0x222222);
+    scene.add(gridHelper);
+
+    // --- Asset Containers ---
+    const verticalPeriscopeGroup = new THREE.Group();
+    const horizontalPeriscopeGroup = new THREE.Group();
+    const objectGroup = new THREE.Group();
+    const eyeGroup = new THREE.Group(); 
+    
+    // Shared Materials
+    const materials = {
+        tube: new THREE.MeshPhongMaterial({ color: 0x4a5568, transparent: true, opacity: 0.3, side: THREE.DoubleSide }),
+        mirror: new THREE.MeshPhongMaterial({ color: 0xa0aec0, shininess: 100, side: THREE.DoubleSide }),
+        housing: new THREE.LineBasicMaterial({color: 0x666666}),
+        rays: [
+            new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 }),
+            new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 }),
+            new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 }),
+            new THREE.LineBasicMaterial({ color: 0xffff00, linewidth: 2 })
+        ]
+    };
+
+    // --- Build Functions ---
+
+    function buildVerticalPeriscope() {
+        verticalPeriscopeGroup.clear();
+        
+        const bMirror = new THREE.Mesh(new THREE.PlaneGeometry(5, 7), materials.mirror);
+        bMirror.rotation.x = -Math.PI / 4;
+        verticalPeriscopeGroup.add(bMirror);
+        
+        const bHousing = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.BoxGeometry(5.2, 5.2, 5.2)), materials.housing);
+        verticalPeriscopeGroup.add(bHousing);
+
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 16, 32, 1, true), materials.tube);
+        tube.position.set(0, 8, 0);
+        verticalPeriscopeGroup.add(tube);
+
+        const topGroup = new THREE.Group();
+        topGroup.name = "topTurret";
+        topGroup.position.set(0, 16, 0);
+        verticalPeriscopeGroup.add(topGroup);
+
+        const tHousing = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.BoxGeometry(5.2, 5.2, 5.2)), materials.housing);
+        topGroup.add(tHousing);
+
+        const tMirror = new THREE.Mesh(new THREE.PlaneGeometry(5, 7), materials.mirror);
+        tMirror.rotation.x = Math.PI / 4; 
+        topGroup.add(tMirror);
+        
+        return verticalPeriscopeGroup;
+    }
+
+    function buildHorizontalPeriscope() {
+        horizontalPeriscopeGroup.clear();
+        horizontalPeriscopeGroup.position.y = 8;
+        
+        const proxGroup = new THREE.Group();
+        horizontalPeriscopeGroup.add(proxGroup);
+
+        const pMirror = new THREE.Mesh(new THREE.PlaneGeometry(8, 10), materials.mirror);
+        pMirror.rotation.y = -Math.PI / 4; 
+        pMirror.name = "proxMirror";
+        proxGroup.add(pMirror);
+
+        const pHousing = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.BoxGeometry(8.5, 8.5, 8.5)), materials.housing);
+        proxGroup.add(pHousing);
+
+        const tube = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 20, 32, 1, true), materials.tube);
+        tube.rotation.x = Math.PI / 2;
+        tube.position.set(0, 0, -10);
+        proxGroup.add(tube);
+
+        const distGroup = new THREE.Group();
+        distGroup.name = "distTurret";
+        distGroup.position.set(0, 0, -20);
+        horizontalPeriscopeGroup.add(distGroup);
+
+        const dHousing = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.BoxGeometry(5.2, 5.2, 5.2)), materials.housing);
+        distGroup.add(dHousing);
+
+        const dMirror = new THREE.Mesh(new THREE.PlaneGeometry(5, 7), materials.mirror);
+        dMirror.rotation.x = -Math.PI / 4; 
+        dMirror.name = "distMirror";
+        distGroup.add(dMirror);
+        
+        return horizontalPeriscopeGroup;
+    }
+
+    function buildEye() {
+        eyeGroup.clear();
+        eyeGroup.position.set(15, 8, 0); 
+        eyeGroup.rotation.y = -Math.PI / 2; 
+
+        const eyeMesh = new THREE.Mesh(new THREE.SphereGeometry(2, 32, 32), new THREE.MeshPhongMaterial({color: 0xffffff}));
+        eyeGroup.add(eyeMesh);
+        
+        const irisMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0, 32, 32), new THREE.MeshBasicMaterial({color: 0x000000}));
+        irisMesh.position.z = 1.5; irisMesh.scale.set(0.6, 0.6, 0.2);
+        eyeGroup.add(irisMesh);
+        
+        const pupilMesh = new THREE.Mesh(new THREE.SphereGeometry(0.4, 32, 32), new THREE.MeshBasicMaterial({color: 0x000000}));
+        pupilMesh.position.z = 1.7; pupilMesh.scale.set(0.6, 0.6, 0.2);
+        eyeGroup.add(pupilMesh);
+
+        const arrowUp = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 3, 0), 5, 0x00ff00, 1, 1);
+        eyeGroup.add(arrowUp);
+        const arrowLeft = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(3, 0, 0), 5, 0xffff00, 1, 1);
+        eyeGroup.add(arrowLeft);
+
+        const lblUp = createLabel("Observer UP", "#00ff00");
+        lblUp.position.set(0, 9, 0); eyeGroup.add(lblUp);
+        const lblLeft = createLabel("Observer LEFT", "#ffff00");
+        lblLeft.position.set(10, 0, 0); eyeGroup.add(lblLeft);
+    }
+
+    function createLabel(text, color) {
+        const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = color; ctx.font = 'bold 20px Arial'; ctx.fillText(text, 10, 40);
+        const tex = new THREE.CanvasTexture(c);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+        sprite.scale.set(7, 1.75, 1);
+        return sprite;
+    }
+
+    let objectMesh, labelMesh;
+    const rayLines = [];
+    const raycaster = new THREE.Raycaster();
+    const basePoints = [
+        new THREE.Vector3(-1.5, 1.5, 0), new THREE.Vector3(1.5, 1.5, 0),
+        new THREE.Vector3(-1.5, -1.5, 0), new THREE.Vector3(1.5, -1.5, 0)
+    ];
+    let rayPoints = basePoints.map(p => p.clone()); 
+
+    function initObject() {
+        objectGroup.clear();
+        objectMesh = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true }));
+        objectGroup.add(objectMesh);
+        
+        const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+        const ctx = c.getContext('2d'); ctx.fillStyle = 'white'; ctx.font = 'bold 40px Arial'; ctx.fillText("OBJECT", 10, 50);
+        labelMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 2), new THREE.MeshBasicMaterial({map: new THREE.CanvasTexture(c), transparent:true, side:THREE.DoubleSide}));
+        objectGroup.add(labelMesh);
+        
+        rayLines.forEach(l => scene.remove(l));
+        rayLines.length = 0;
+        for(let i=0; i<4; i++) {
+            const l = new THREE.Line(new THREE.BufferGeometry(), materials.rays[i]);
+            scene.add(l);
+            rayLines.push(l);
+        }
+    }
+
+    function generateTexture(type) {
+        const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,256,256);
+        if (type === 'square') {
+            ctx.fillStyle = '#ff0000'; ctx.fillRect(0,0,128,128); ctx.fillStyle = '#00ff00'; ctx.fillRect(128,0,128,128);
+            ctx.fillStyle = '#0000ff'; ctx.fillRect(0,128,128,128); ctx.fillStyle = '#ffff00'; ctx.fillRect(128,128,128,128);
+            ctx.strokeStyle = 'black'; ctx.lineWidth = 4; ctx.strokeRect(0,0,256,256);
+            ctx.beginPath(); ctx.moveTo(128,0); ctx.lineTo(128,256); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,128); ctx.lineTo(256,128); ctx.stroke();
+        } else if (type === 'p') {
+            ctx.fillStyle = 'black'; ctx.font = 'bold 200px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('P', 128, 128);
+            ctx.strokeStyle = 'black'; ctx.lineWidth = 8; ctx.strokeRect(0,0,256,256);
+            ctx.fillStyle = '#ff0000'; ctx.fillRect(0,0,20,20); ctx.fillStyle = '#00ff00'; ctx.fillRect(236,0,20,20);
+            ctx.fillStyle = '#0000ff'; ctx.fillRect(0,236,20,20); ctx.fillStyle = '#ffff00'; ctx.fillRect(236,236,20,20);
+        } else if (type === 'smiley') {
+            ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(128,128, 120, 0, Math.PI*2); ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = 'black'; ctx.stroke();
+            ctx.fillStyle = 'black'; ctx.beginPath(); ctx.arc(80, 90, 15, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(176, 90, 25, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(80, 160); ctx.bezierCurveTo(80, 200, 176, 180, 176, 150); ctx.stroke();
+            ctx.fillStyle = '#ff0000'; ctx.fillRect(0,0,20,20); ctx.fillStyle = '#00ff00'; ctx.fillRect(236,0,20,20);
+            ctx.fillStyle = '#0000ff'; ctx.fillRect(0,236,20,20); ctx.fillStyle = '#ffff00'; ctx.fillRect(236,236,20,20);
+        }
+        return c;
+    }
+
+    function switchMode(mode) {
+        currentMode = parseInt(mode);
+        
+        scene.remove(verticalPeriscopeGroup);
+        scene.remove(horizontalPeriscopeGroup);
+        scene.remove(eyeGroup);
+        scene.remove(objectGroup);
+        
+        if (currentMode === 1 || currentMode === 2) {
+            if (verticalPeriscopeGroup.children.length === 0) buildVerticalPeriscope();
+            scene.add(verticalPeriscopeGroup);
+            scene.add(objectGroup);
+            
+            currentObjectRotation = 0; 
+            objectMesh.rotation.set(0,0,0);
+            labelMesh.rotation.set(0,0,0);
+            labelMesh.position.set(0, 3, 0); 
+            
+            camera.position.set(35, 20, 45);
+            controls.target.set(0, 8, 0);
+        } 
+        else if (currentMode === 3) {
+            if (horizontalPeriscopeGroup.children.length === 0) buildHorizontalPeriscope();
+            if (eyeGroup.children.length === 0) buildEye();
+            scene.add(horizontalPeriscopeGroup);
+            scene.add(eyeGroup);
+            scene.add(objectGroup);
+            
+            setObjectRotation(0); 
+            
+            camera.position.set(40, 25, 20);
+            controls.target.set(0, 0, -10);
+        }
+        
+        controls.update();
+        
+        document.getElementById('ctrl-sim1').style.display = (currentMode === 1) ? 'flex' : 'none';
+        document.getElementById('ctrl-slider').style.display = (currentMode === 2 || currentMode === 3) ? 'block' : 'none';
+        document.getElementById('ctrl-sim3-obj').style.display = (currentMode === 3) ? 'block' : 'none';
+        document.getElementById('status-text').style.display = (currentMode === 1) ? 'block' : 'none';
+        
+        document.getElementById('rotation-slider').value = 0;
+        if (currentMode === 1) setSim1Mode(0); 
+        
+        setObject(currentObjectType);
+    }
+
+    window.setObject = function(type) {
+        currentObjectType = type;
+        document.querySelectorAll('.obj-btn').forEach(b => b.classList.remove('active'));
+        const btnIdx = type === 'square' ? 0 : type === 'p' ? 1 : 2;
+        document.querySelectorAll('.obj-btn')[btnIdx].classList.add('active');
+        
+        const canvas = generateTexture(type);
+        objectMesh.material.map = new THREE.CanvasTexture(canvas);
+        objectMesh.material.needsUpdate = true;
+        
+        updateRays();
+        updatePhysics();
+    };
+
+    window.setSim1Mode = function(angle) {
+        document.getElementById('rotation-slider').value = angle;
+        document.getElementById('btn-z').classList.toggle('active', angle === 0);
+        document.getElementById('btn-c').classList.toggle('active', angle === 180);
+        updatePhysics();
+    }
+
+    window.setObjectRotation = function(index) {
+        // Base -PI/2
+        currentObjectRotation = -Math.PI / 2 - (index * Math.PI / 2);
+        
+        document.querySelectorAll('.rot-btn').forEach((b, i) => {
+            if (i === index) b.classList.add('active');
+            else b.classList.remove('active');
+        });
+
+        objectMesh.rotation.z = currentObjectRotation;
+        updateSim3Label();
+        updateRays();
+        updatePhysics();
+    };
+
+    function updateSim3Label() {
+        labelMesh.rotation.z = currentObjectRotation;
+        const dist = 3.0;
+        const x = -Math.sin(currentObjectRotation) * dist;
+        const y = Math.cos(currentObjectRotation) * dist;
+        labelMesh.position.set(x, y, 0.05);
+    }
+    
+    function updateRays() {
+        for(let i=0; i<4; i++) {
+            rayPoints[i].copy(basePoints[i]).applyAxisAngle(new THREE.Vector3(0,0,1), currentObjectRotation);
+        }
+    }
+
+    function updatePhysics() {
+        const sliderVal = parseFloat(document.getElementById('rotation-slider').value);
+        document.getElementById('angle-val').innerText = sliderVal;
+        
+        if (currentMode === 1 || currentMode === 2) {
+            updateVerticalPhysics(sliderVal);
+        } else {
+            updateHorizontalPhysics(sliderVal);
+        }
+    }
+
+    function updateVerticalPhysics(angleDeg) {
+        const angleRad = THREE.MathUtils.degToRad(angleDeg);
+        const topTurret = verticalPeriscopeGroup.getObjectByName("topTurret");
+        topTurret.rotation.y = angleRad;
+        verticalPeriscopeGroup.updateMatrixWorld(true);
+
+        const dist = 25;
+        const px = Math.sin(angleRad) * dist;
+        const pz = Math.cos(angleRad) * dist;
+        objectGroup.position.set(px, 16, pz);
+        objectGroup.lookAt(0, 16, 0);
+        objectGroup.updateMatrixWorld(true);
+
+        const mainDir = new THREE.Vector3(-px, 0, -pz).normalize();
+        const tMirror = topTurret.children.find(c => c.type === 'Mesh');
+        
+        rayPoints.forEach((localPt, index) => {
+            const worldPt = localPt.clone().applyMatrix4(objectGroup.matrixWorld);
+            const dir1 = mainDir.clone();
+            raycaster.set(worldPt, dir1);
+            const hits1 = raycaster.intersectObject(tMirror);
+            const points = [worldPt];
+            if(hits1.length > 0) {
+                points.push(hits1[0].point);
+                const n1 = hits1[0].face.normal.clone().applyQuaternion(tMirror.getWorldQuaternion(new THREE.Quaternion())).normalize();
+                const dir2 = dir1.clone().reflect(n1).normalize();
+                
+                const planeBot = new THREE.Plane(new THREE.Vector3(0, 1, 1).normalize(), 0);
+                const hit2 = new THREE.Vector3();
+                const ray2 = new THREE.Ray(hits1[0].point, dir2);
+                ray2.intersectPlane(planeBot, hit2);
+                
+                if(hit2) {
+                    points.push(hit2);
+                    const dir3 = dir2.clone().reflect(planeBot.normal).normalize();
+                    const endPt = hit2.clone().add(dir3.clone().multiplyScalar(15));
+                    points.push(endPt);
+                }
+            } else {
+                points.push(worldPt.clone().add(dir1.multiplyScalar(30)));
+            }
+            rayLines[index].geometry.setFromPoints(points);
+        });
+
+        if(currentMode === 1) {
+            const stat = document.getElementById('status-text');
+            if(angleDeg < 5) { stat.innerText = "INVERTED"; stat.className="text-xs mt-2 text-center font-mono font-bold text-red-400"; }
+            else { stat.innerText = "UPRIGHT"; stat.className="text-xs mt-2 text-center font-mono font-bold text-green-400"; }
+        }
+
+        const ctx = document.getElementById('observer-canvas').getContext('2d');
+        const img = generateTexture(currentObjectType);
+        ctx.clearRect(0,0,256,256);
+        ctx.save();
+        ctx.translate(128,128);
+        const rot = THREE.MathUtils.degToRad(-angleDeg + 180);
+        ctx.rotate(rot);
+        ctx.drawImage(img, -128, -128);
+        ctx.restore();
+    }
+
+    function updateHorizontalPhysics(sliderVal) {
+        const physAngle = sliderVal + 90;
+        const angleRad = THREE.MathUtils.degToRad(physAngle);
+        
+        const distGroup = horizontalPeriscopeGroup.getObjectByName("distTurret");
+        distGroup.rotation.z = angleRad;
+        horizontalPeriscopeGroup.updateMatrixWorld(true);
+
+        const R = 25; 
+        const objX = -Math.sin(angleRad) * R;
+        const objY = 8 + Math.cos(angleRad) * R;
+        objectGroup.position.set(objX, objY, -20);
+        objectGroup.rotation.set(0,0,0);
+        objectGroup.rotateZ(angleRad);
+        objectGroup.translateY(25);
+        objectGroup.rotateX(Math.PI / 2);
+        objectGroup.updateMatrixWorld(true);
+
+        const mainDir = new THREE.Vector3(0, 8, -20).sub(objectGroup.position).normalize();
+        const dMirror = distGroup.children.find(c => c.name === 'distMirror');
+        const pMirror = horizontalPeriscopeGroup.children[0].children.find(c => c.name === 'proxMirror'); 
+
+        rayPoints.forEach((localPt, index) => {
+            const worldPt = localPt.clone().applyMatrix4(objectGroup.matrixWorld);
+            raycaster.set(worldPt, mainDir);
+            const hits1 = raycaster.intersectObject(dMirror);
+            const points = [worldPt];
+
+            if(hits1.length > 0) {
+                points.push(hits1[0].point);
+                const n1 = hits1[0].face.normal.clone().applyQuaternion(dMirror.getWorldQuaternion(new THREE.Quaternion())).normalize();
+                const dir2 = mainDir.clone().reflect(n1).normalize();
+                raycaster.set(hits1[0].point, dir2);
+                const hits2 = raycaster.intersectObject(pMirror);
+                if(hits2.length > 0) {
+                    points.push(hits2[0].point);
+                    const n2 = hits2[0].face.normal.clone().applyQuaternion(pMirror.getWorldQuaternion(new THREE.Quaternion())).normalize();
+                    const dir3 = dir2.clone().reflect(n2).normalize();
+                    const endPt = hits2[0].point.clone().add(dir3.multiplyScalar(15));
+                    points.push(endPt);
+                }
+            } else {
+                points.push(worldPt.clone().add(mainDir.multiplyScalar(30)));
+            }
+            rayLines[index].geometry.setFromPoints(points);
+        });
+
+        const ctx = document.getElementById('observer-canvas').getContext('2d');
+        const img = generateTexture(currentObjectType);
+        ctx.clearRect(0,0,256,256);
+        ctx.save();
+        ctx.translate(128,128);
+        const rot = THREE.MathUtils.degToRad(sliderVal) - currentObjectRotation - Math.PI/2;
+        ctx.rotate(rot);
+        ctx.drawImage(img, -128, -128);
+        ctx.restore();
+    }
+
+    initObject();
+    switchMode(1);
+    
+    document.getElementById('rotation-slider').addEventListener('input', updatePhysics);
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    setTimeout(() => {
+        const container = document.getElementById('container');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    }, 100);
+
+    window.addEventListener('resize', () => {
+        const container = document.getElementById('container');
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
+
+</script>
+</body>
+</html>

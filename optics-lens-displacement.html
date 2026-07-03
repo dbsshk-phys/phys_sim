@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optics Lab: Lens Displacement Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .canvas-container { position: relative; background: #0f172a; border-radius: 8px; overflow: hidden; }
+        .grid-bg { background-image: radial-gradient(#334155 1px, transparent 1px); background-size: 20px 20px; }
+        .control-btn { transition: all 0.2s; }
+        .control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+        .radio-circle { transition: all 0.2s; }
+        .row-active .radio-circle { background-color: #4f46e5; border-color: #4f46e5; box-shadow: inset 0 0 0 2px white; }
+    </style>
+</head>
+<body class="bg-slate-50 font-sans">
+    <div class="max-w-7xl mx-auto p-4 lg:p-6">
+        <header class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end border-b pb-4 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Optics Lab: Lens Displacement Analysis</h1>
+                <p class="text-slate-500 text-sm">A sharp image is formed on a screen by a convex lens. When the object / screen is moved, how can you move the lens to capture a sharp image again?</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button onclick="resetLab()" class="px-4 py-2 bg-rose-600 text-white text-xs font-bold rounded shadow hover:bg-rose-700 transition">
+                    Reset Lab
+                </button>
+                <button onclick="exportGraphs()" id="exportBtn" disabled class="px-4 py-2 bg-slate-800 text-white text-xs font-bold rounded shadow hover:bg-slate-700 disabled:opacity-30 transition">
+                    Export Graphs (PNG)
+                </button>
+                <div class="text-right text-sm font-mono text-slate-400 bg-white px-3 py-2 rounded border border-slate-200 shadow-sm">
+                    \( f = \)<span id="headerF">10.0</span>\(\text{ cm} \)
+                </div>
+            </div>
+        </header>
+
+        <!-- TOP SECTION: Configuration & Initial Parameters -->
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+            
+            <!-- 1. Configuration (Spans 2 columns) -->
+            <div class="xl:col-span-2 bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-4">
+                    <h2 class="text-md font-bold text-slate-800 flex items-center gap-2">
+                        <span class="bg-slate-800 text-white w-6 h-6 flex items-center justify-center rounded-full text-xs">1</span>
+                        Configuration
+                    </h2>
+                    <!-- Choice: Preset vs Custom -->
+                    <div class="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                        <button id="tabPreset" onclick="toggleMode('preset')" class="px-4 py-1.5 text-xs font-bold rounded-md transition bg-white shadow-sm text-slate-800">Pre-set Values</button>
+                        <button id="tabCustom" onclick="toggleMode('custom')" class="px-4 py-1.5 text-xs font-bold rounded-md transition text-slate-500 hover:text-slate-800">Custom Setup</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Setup Type -->
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1.5">Setup Type</p>
+                        <div class="flex gap-2">
+                            <button onclick="selectSetupType(3)" id="btnType3" class="flex-1 p-3 rounded-lg border text-xs font-bold transition bg-white border-slate-200 text-slate-600 hover:bg-slate-50">
+                                Fixed Object<br><span class="font-normal text-[10px]">(Move Screen)</span>
+                            </button>
+                            <button onclick="selectSetupType(4)" id="btnType4" class="flex-1 p-3 rounded-lg border text-xs font-bold transition bg-white border-slate-200 text-slate-600 hover:bg-slate-50">
+                                Fixed Screen<br><span class="font-normal text-[10px]">(Move Object)</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Options Panes -->
+                    <div id="panePreset">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1.5">Initial Pre-set Condition</p>
+                        <div class="border border-slate-200 rounded-lg overflow-hidden">
+                            <table class="w-full text-left border-collapse text-[11px]">
+                                <thead>
+                                    <tr class="bg-slate-100 text-slate-500 border-b border-slate-200">
+                                        <th class="p-2 font-bold">Image Type</th>
+                                        <th class="p-2 font-bold">\( u \)</th>
+                                        <th class="p-2 font-bold">\( v \)</th>
+                                        <th class="p-2 font-bold">\( m \)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr class="border-b border-slate-100 hover:bg-indigo-50 cursor-pointer transition" onclick="selectImageState('mag')" id="rowMag">
+                                        <td class="p-2 font-bold text-slate-700 flex items-center gap-2">
+                                            <div class="w-3 h-3 rounded-full border border-slate-400 flex-shrink-0 radio-circle" id="radioMag"></div>
+                                            Magnified
+                                        </td>
+                                        <td class="p-2 font-mono">15.0</td>
+                                        <td class="p-2 font-mono">30.0</td>
+                                        <td class="p-2 font-mono text-indigo-500">-2.0</td>
+                                    </tr>
+                                    <tr class="hover:bg-indigo-50 cursor-pointer transition" onclick="selectImageState('dim')" id="rowDim">
+                                        <td class="p-2 font-bold text-slate-700 flex items-center gap-2">
+                                            <div class="w-3 h-3 rounded-full border border-slate-400 flex-shrink-0 radio-circle" id="radioDim"></div>
+                                            Diminished
+                                        </td>
+                                        <td class="p-2 font-mono">30.0</td>
+                                        <td class="p-2 font-mono">15.0</td>
+                                        <td class="p-2 font-mono text-indigo-500">-0.5</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div id="paneCustom" class="hidden">
+                        <p class="text-[10px] font-bold text-slate-500 uppercase ml-1 mb-1.5">Custom Values (cm)</p>
+                        <div class="grid grid-cols-2 gap-3 mb-2">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">Focal Length (\(f\))</label>
+                                <input type="number" id="customF" value="10" step="0.5" class="w-full p-2 border border-slate-300 rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">Obj Dist (\(u\))</label>
+                                <input type="number" id="customU" value="15" step="0.5" class="w-full p-2 border border-slate-300 rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                        </div>
+                        <div id="customPreview" class="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100 p-2 rounded italic text-center">
+                            Preview: \( v \approx \text{--}, D \approx \text{--} \)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-5">
+                    <button id="btnInit" onclick="confirmInit()" disabled class="w-full py-2.5 bg-slate-800 text-white rounded-lg font-bold text-sm shadow disabled:opacity-30 transition hover:bg-slate-700 active:scale-95">
+                        Initialize Lab
+                    </button>
+                </div>
+            </div>
+
+            <!-- Initial Parameters Box -->
+            <div id="paramsPanel" class="xl:col-span-1 bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                <h3 class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4 text-center border-b border-slate-100 pb-2">Initial State</h3>
+                <div class="grid grid-cols-2 gap-y-4 gap-x-2">
+                    <div class="text-center bg-slate-50 p-2 rounded border border-slate-100">
+                        <p class="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Init \( u \)</p>
+                        <p id="initU" class="text-base font-mono text-slate-800">NA</p>
+                    </div>
+                    <div class="text-center bg-slate-50 p-2 rounded border border-slate-100">
+                        <p class="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Init \( v \)</p>
+                        <p id="initV" class="text-base font-mono text-slate-800">NA</p>
+                    </div>
+                    <div class="text-center bg-slate-50 p-2 rounded border border-slate-100">
+                        <p class="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Init \( D \)</p>
+                        <p id="initD" class="text-base font-mono text-slate-800">NA</p>
+                    </div>
+                    <div class="text-center bg-slate-50 p-2 rounded border border-slate-100">
+                        <p class="text-[9px] uppercase font-bold text-slate-400 mb-0.5">Init \( m \)</p>
+                        <p id="initM" class="text-base font-mono text-slate-800">NA</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN SECTION: Visualization & Execution -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+            
+            <!-- Left Column: Visualizations -->
+            <div class="xl:col-span-8 space-y-4">
+                <!-- Simulation Canvas -->
+                <div class="canvas-container shadow-xl border-b-4 border-slate-700">
+                    <div class="absolute top-4 left-4 flex gap-4 z-10">
+                        <div class="bg-black/70 text-white px-3 py-1 rounded text-xs font-mono border border-white/20 shadow">
+                            Bench \( D = \) <span id="labelD">--</span> cm
+                        </div>
+                        <div id="focusBadge" class="px-3 py-1 rounded text-xs font-bold uppercase tracking-tighter bg-slate-600 text-white shadow">
+                            Ready
+                        </div>
+                    </div>
+                    <canvas id="opticsCanvas" class="w-full h-80 grid-bg"></canvas>
+                </div>
+
+                <!-- Graphs -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div id="vuGraph" class="bg-white p-2 rounded-xl shadow-sm border border-slate-200 h-96"></div>
+                    <div id="duGraph" class="bg-white p-2 rounded-xl shadow-sm border border-slate-200 h-96"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Execution & Live Measurement -->
+            <div class="xl:col-span-4 space-y-4">
+                
+                <!-- 2. Execution -->
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                    <h2 class="text-md font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <span class="bg-slate-800 text-white w-6 h-6 flex items-center justify-center rounded-full text-xs">2</span>
+                        Execution
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <!-- Process 1 Configuration UI -->
+                        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            <label class="block text-[11px] font-bold text-slate-500 uppercase mb-3 italic">
+                                Process 1: Displace <span id="p1TargetLabel">...</span>
+                            </label>
+                            
+                            <div class="grid grid-cols-2 gap-2 mb-2">
+                                <button id="btnDirAway" onclick="setDirection('away')" disabled class="p-2 rounded border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-[11px] font-bold transition disabled:opacity-50 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">Away from Lens</button>
+                                <button id="btnDirTowards" onclick="setDirection('towards')" disabled class="p-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-bold transition hover:bg-slate-50 disabled:opacity-50">Towards Lens</button>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-2 mb-3">
+                                <button id="btnDispPreset" onclick="setDispMode('preset')" disabled class="p-2 rounded border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-[11px] font-bold transition disabled:opacity-50 disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400">Preset (5cm)</button>
+                                <button id="btnDispCustom" onclick="setDispMode('custom')" disabled class="p-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-bold transition hover:bg-slate-50 disabled:opacity-50">Custom</button>
+                            </div>
+
+                            <div id="customDispContainer" style="display:none;" class="mb-3">
+                                <div class="flex items-center gap-2">
+                                    <label class="text-[10px] text-slate-500 whitespace-nowrap font-bold">\(\Delta\) = <span id="p1DeltaVal">0.0</span> cm</label>
+                                    <input type="range" id="p1Slider" min="0" max="10" step="0.1" value="0" class="w-full h-2 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                                </div>
+                            </div>
+
+                            <button id="btnP1" disabled onclick="executeProcess1Btn()" class="control-btn w-full py-2.5 bg-indigo-600 text-white rounded-md text-sm font-bold shadow hover:bg-indigo-700 active:scale-95 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-none">
+                                Execute Process 1
+                            </button>
+                        </div>
+                        
+                        <!-- Process 2/3 Slide -->
+                        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            <label class="block text-[11px] font-bold text-slate-500 uppercase mb-3 italic">
+                                Process 2/3: Slide Lens \( (u) \)
+                            </label>
+                            <input type="range" id="uSlider" step="0.05" disabled class="w-full h-2 bg-slate-300 rounded-lg appearance-none cursor-pointer accent-indigo-600 mb-1">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Measurements Bar -->
+                <div class="bg-slate-800 text-white p-5 rounded-xl shadow-lg">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Live Measurement</h3>
+                    <div class="grid grid-cols-4 gap-2 font-mono text-sm">
+                        <div class="bg-slate-700/50 p-2 rounded text-center">
+                            <p class="text-[9px] text-slate-400 mb-1">\( u \) (cm)</p>
+                            <span id="statU" class="text-white text-base">--</span>
+                        </div>
+                        <div class="bg-slate-700/50 p-2 rounded text-center">
+                            <p class="text-[9px] text-slate-400 mb-1">\( v \) (cm)</p>
+                            <span id="statV" class="text-white text-base">--</span>
+                        </div>
+                        <div class="bg-slate-700/50 p-2 rounded text-center">
+                            <p class="text-[9px] text-slate-400 mb-1">\( m \)</p>
+                            <span id="statMag" class="text-indigo-300 text-base">--</span>
+                        </div>
+                        <div class="bg-slate-700/50 p-2 rounded text-center">
+                            <p class="text-[9px] text-slate-400 mb-1">\( D \) (cm)</p>
+                            <span id="statD" class="text-emerald-400 text-base">--</span>
+                        </div>
+                    </div>
+
+                    <!-- Recorded Sharp Images -->
+                    <div class="mt-4 pt-4 border-t border-slate-700">
+                        <h4 class="text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center mb-2">Recorded Sharp Images</h4>
+                        <div class="grid grid-cols-2 gap-2">
+                            <!-- Image 1 -->
+                            <div class="bg-slate-900/80 p-2 rounded text-[10px] border border-slate-700">
+                                <div class="text-emerald-400 font-bold mb-1 border-b border-slate-700 pb-1 text-center">Image 1</div>
+                                <div class="flex justify-between text-slate-300"><span>\( u \):</span><span id="rec1U" class="font-mono text-white">--</span></div>
+                                <div class="flex justify-between text-slate-300"><span>\( v \):</span><span id="rec1V" class="font-mono text-white">--</span></div>
+                                <div class="flex justify-between text-slate-300"><span>\( m \):</span><span id="rec1M" class="font-mono text-white">--</span></div>
+                                <div class="flex justify-between text-slate-300"><span>\( D \):</span><span id="rec1D" class="font-mono text-white">--</span></div>
+                            </div>
+                            <!-- Image 2 -->
+                            <div class="bg-slate-900/80 p-2 rounded text-[10px] border border-slate-700">
+                                <div class="text-emerald-400 font-bold mb-1 border-b border-slate-700 pb-1 text-center">Image 2</div>
+                                <div class="flex justify-between text-slate-300"><span>\( u \):</span><span id="rec2U" class="font-mono text-white">--</span></div>
+                                <div class="flex justify-between text-slate-300"><span>\( v \):</span><span id="rec2V" class="font-mono text-white">--</span></div>
+                                <div class="flex justify-between text-slate-300"><span>\( m \):</span><span id="rec2M" class="font-mono text-white">--</span></div>
+                                <div class="flex justify-between text-slate-300"><span>\( D \):</span><span id="rec2D" class="font-mono text-white">--</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('opticsCanvas');
+        const ctx = canvas.getContext('2d');
+        const uSlider = document.getElementById('uSlider');
+        const p1Slider = document.getElementById('p1Slider');
+        
+        let configMode = 'preset'; 
+        let f = 10;
+        let u = 0, v = 0, benchD = 0;
+        let initialU = 0, initialV = 0, initialD = 0;
+        let selectedType = null;
+        let selectedState = null;
+        let activeScenario = null;
+        
+        let p1Direction = 'away';
+        let p1DispMode = 'preset';
+        let postP1_u = 0;
+        let postP1_D = 0;
+
+        let p23Path = []; 
+        let foundIntersections = []; 
+        let isFocused = false;
+        let process1Executed = false;
+        let history = []; 
+
+        const commonLayout = {
+            margin: { t: 65, b: 45, l: 50, r: 25 },
+            font: { family: 'Inter, sans-serif', size: 10 },
+            hovermode: 'closest',
+            showlegend: true,
+            legend: { x: 0, y: 1.05, orientation: 'h' },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: '#ffffff'
+        };
+
+        function toggleMode(mode) {
+            configMode = mode;
+            const tabP = document.getElementById('tabPreset');
+            const tabC = document.getElementById('tabCustom');
+            const paneP = document.getElementById('panePreset');
+            const paneC = document.getElementById('paneCustom');
+
+            if (mode === 'preset') {
+                tabP.className = "w-1/2 px-4 py-1.5 text-xs font-bold rounded-md transition bg-white shadow-sm text-slate-800";
+                tabC.className = "w-1/2 px-4 py-1.5 text-xs font-bold rounded-md transition text-slate-500 hover:text-slate-800";
+                paneP.classList.remove('hidden');
+                paneC.classList.add('hidden');
+            } else {
+                tabC.className = "w-1/2 px-4 py-1.5 text-xs font-bold rounded-md transition bg-white shadow-sm text-slate-800";
+                tabP.className = "w-1/2 px-4 py-1.5 text-xs font-bold rounded-md transition text-slate-500 hover:text-slate-800";
+                paneC.classList.remove('hidden');
+                paneP.classList.add('hidden');
+            }
+            checkInitReady();
+        }
+
+        function selectSetupType(type) {
+            selectedType = type;
+            document.getElementById('btnType3').className = type === 3 ? "flex-1 p-3 rounded-lg border-2 text-xs font-bold transition bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm" : "flex-1 p-3 rounded-lg border text-xs font-bold transition bg-white border-slate-200 text-slate-600 hover:bg-slate-50";
+            document.getElementById('btnType4').className = type === 4 ? "flex-1 p-3 rounded-lg border-2 text-xs font-bold transition bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm" : "flex-1 p-3 rounded-lg border text-xs font-bold transition bg-white border-slate-200 text-slate-600 hover:bg-slate-50";
+            checkInitReady();
+        }
+
+        function selectImageState(state) {
+            selectedState = state;
+            document.getElementById('rowMag').classList.remove('row-active', 'bg-indigo-50');
+            document.getElementById('rowDim').classList.remove('row-active', 'bg-indigo-50');
+            
+            if (state === 'mag') {
+                document.getElementById('rowMag').classList.add('row-active', 'bg-indigo-50');
+            } else {
+                document.getElementById('rowDim').classList.add('row-active', 'bg-indigo-50');
+            }
+            checkInitReady();
+        }
+
+        function updateCustomPreview() {
+            const cf = parseFloat(document.getElementById('customF').value);
+            const cu = parseFloat(document.getElementById('customU').value);
+            const preview = document.getElementById('customPreview');
+            
+            if (cu > cf && cf > 0) {
+                const cv = 1 / (1/cf - 1/cu);
+                preview.innerHTML = `Preview: \( v \approx ${cv.toFixed(1)} \), \( D \approx ${(cu + cv).toFixed(1)} \)`;
+                preview.className = "text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-100 p-2 rounded italic text-center";
+                if(window.MathJax) MathJax.typesetPromise();
+                return true;
+            } else {
+                preview.innerText = `Error: u must be > f for real image`;
+                preview.className = "text-[10px] text-rose-600 bg-rose-50 border border-rose-100 p-2 rounded italic text-center";
+                return false;
+            }
+        }
+
+        function checkInitReady() {
+            let ready = false;
+            if (configMode === 'preset') {
+                ready = (selectedType && selectedState);
+            } else {
+                ready = (selectedType && updateCustomPreview());
+            }
+            document.getElementById('btnInit').disabled = !ready;
+        }
+
+        function setDirection(dir) {
+            p1Direction = dir;
+            document.getElementById('btnDirAway').className = dir === 'away' ? "p-2 rounded border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-[11px] font-bold transition" : "p-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-bold transition hover:bg-slate-50";
+            document.getElementById('btnDirTowards').className = dir === 'towards' ? "p-2 rounded border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-[11px] font-bold transition" : "p-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-bold transition hover:bg-slate-50";
+            
+            // Auto update preset value label based on direction rules (5cm away, 2cm towards)
+            const presetVal = dir === 'away' ? 5 : 2;
+            document.getElementById('btnDispPreset').innerText = `Preset (${presetVal}cm)`;
+            
+            if (process1Executed) applyProcess1();
+        }
+
+        function setDispMode(mode) {
+            p1DispMode = mode;
+            document.getElementById('btnDispPreset').className = mode === 'preset' ? "p-2 rounded border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-[11px] font-bold transition" : "p-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-bold transition hover:bg-slate-50";
+            document.getElementById('btnDispCustom').className = mode === 'custom' ? "p-2 rounded border-2 border-indigo-500 bg-indigo-50 text-indigo-700 text-[11px] font-bold transition" : "p-2 rounded border border-slate-200 bg-white text-slate-600 text-[11px] font-bold transition hover:bg-slate-50";
+            document.getElementById('customDispContainer').style.display = mode === 'custom' ? 'block' : 'none';
+            
+            const btnP1 = document.getElementById('btnP1');
+            if (mode === 'preset') {
+                if (!process1Executed) {
+                    btnP1.disabled = false;
+                    btnP1.innerText = "Execute Process 1";
+                }
+            } else {
+                btnP1.disabled = true;
+                btnP1.innerText = "Use Slider to Execute";
+            }
+
+            if (activeScenario !== null && process1Executed) applyProcess1();
+        }
+
+        function confirmInit() {
+            if (configMode === 'preset') {
+                f = 10;
+                if (selectedState === 'mag') { u = 15; v = 30; } else { u = 30; v = 15; }
+            } else {
+                f = parseFloat(document.getElementById('customF').value);
+                u = parseFloat(document.getElementById('customU').value);
+                v = 1 / (1/f - 1/u);
+            }
+            initScenario(selectedType);
+        }
+
+        function showEmptyGraphs() {
+            Plotly.newPlot('vuGraph', [], { ...commonLayout, title: 'v (Screen-Lens) vs u (Obj-Lens)', xaxis: {title: 'u (cm)', range: [0, 60]}, yaxis: {title: 'v (cm)', range: [0, 60]} });
+            Plotly.newPlot('duGraph', [], { ...commonLayout, title: 'D (Obj-Screen) vs u (Obj-Lens)', xaxis: {title: 'u (cm)', range: [0, 60]}, yaxis: {title: 'D (cm)', range: [0, 80]} });
+        }
+
+        function updateRecordedImages() {
+            if (foundIntersections.length > 0) {
+                let img1 = foundIntersections[0];
+                document.getElementById('rec1U').innerText = img1.u.toFixed(1);
+                document.getElementById('rec1V').innerText = img1.v.toFixed(1);
+                document.getElementById('rec1M').innerText = (-(img1.v/img1.u)).toFixed(2);
+                document.getElementById('rec1D').innerText = img1.D.toFixed(1);
+            } else {
+                ['rec1U', 'rec1V', 'rec1M', 'rec1D'].forEach(id => document.getElementById(id).innerText = '--');
+            }
+            
+            if (foundIntersections.length > 1) {
+                let img2 = foundIntersections[1];
+                document.getElementById('rec2U').innerText = img2.u.toFixed(1);
+                document.getElementById('rec2V').innerText = img2.v.toFixed(1);
+                document.getElementById('rec2M').innerText = (-(img2.v/img2.u)).toFixed(2);
+                document.getElementById('rec2D').innerText = img2.D.toFixed(1);
+            } else {
+                ['rec2U', 'rec2V', 'rec2M', 'rec2D'].forEach(id => document.getElementById(id).innerText = '--');
+            }
+        }
+
+        function resetLab() {
+            selectedType = null;
+            selectedState = null;
+            activeScenario = null;
+            history = [];
+            p23Path = [];
+            foundIntersections = [];
+            process1Executed = false;
+            
+            // Disable components
+            uSlider.disabled = true;
+            document.getElementById('btnP1').disabled = true;
+            document.getElementById('btnP1').innerText = "Execute Process 1";
+            document.getElementById('exportBtn').disabled = true;
+            document.getElementById('btnInit').disabled = true;
+            
+            const p1Buttons = ['btnDirAway', 'btnDirTowards', 'btnDispPreset', 'btnDispCustom'];
+            p1Buttons.forEach(id => document.getElementById(id).disabled = true);
+            document.getElementById('p1Slider').disabled = true;
+            
+            // Reset configurations
+            ['btnType3', 'btnType4'].forEach(id => {
+                document.getElementById(id).className = "flex-1 p-3 rounded-lg border text-xs font-bold transition bg-white border-slate-200 text-slate-600 hover:bg-slate-50";
+            });
+            document.getElementById('rowMag').classList.remove('row-active', 'bg-indigo-50');
+            document.getElementById('rowDim').classList.remove('row-active', 'bg-indigo-50');
+
+            document.getElementById('initU').innerText = "NA";
+            document.getElementById('initV').innerText = "NA";
+            document.getElementById('initD').innerText = "NA";
+            document.getElementById('initM').innerText = "NA";
+            document.getElementById('labelD').innerText = "--";
+            document.getElementById('statU').innerText = "--";
+            document.getElementById('statV').innerText = "--";
+            document.getElementById('statD').innerText = "--";
+            document.getElementById('statMag').innerText = "--";
+            document.getElementById('headerF').innerText = "10.0";
+            document.getElementById('p1TargetLabel').innerText = "...";
+            document.getElementById('p1DeltaVal').innerText = "0.0";
+            
+            updateRecordedImages();
+            showEmptyGraphs();
+            drawOptics(0);
+        }
+
+        function initScenario(type) {
+            activeScenario = type;
+            history = [];
+            p23Path = [];
+            foundIntersections = [];
+            process1Executed = false;
+            
+            // Enable P1 options
+            document.getElementById('btnP1').disabled = false;
+            document.getElementById('btnP1').innerText = "Execute Process 1";
+            document.getElementById('exportBtn').disabled = false;
+            
+            const p1Buttons = ['btnDirAway', 'btnDirTowards', 'btnDispPreset', 'btnDispCustom'];
+            p1Buttons.forEach(id => document.getElementById(id).disabled = false);
+            document.getElementById('p1Slider').disabled = false;
+            
+            setDirection('away');
+            setDispMode('preset');
+            p1Slider.value = 0;
+            document.getElementById('p1DeltaVal').innerText = "0.0";
+
+            document.getElementById('p1TargetLabel').innerText = type === 3 ? "Screen" : "Object";
+            
+            benchD = u + v;
+            initialU = u; initialV = v; initialD = benchD;
+            postP1_u = initialU;
+            postP1_D = initialD;
+            
+            document.getElementById('headerF').innerText = f.toFixed(1);
+            document.getElementById('initU').innerText = initialU.toFixed(1);
+            document.getElementById('initV').innerText = initialV.toFixed(1);
+            document.getElementById('initD').innerText = initialD.toFixed(1);
+            document.getElementById('initM').innerText = (-(initialV/initialU)).toFixed(1);
+
+            uSlider.disabled = true; // Wait for P1 to finish
+            uSlider.min = f + 0.1;
+            uSlider.max = Math.max(initialU, initialD) + 40;
+            uSlider.value = initialU;
+            
+            updateRecordedImages();
+            
+            // Record Initial
+            history.push({ u: initialU, v: initialV, D: initialD });
+            updateLab();
+        }
+
+        // Button triggering Process 1 explicitly (Useful for Preset)
+        function executeProcess1Btn() {
+            if (!process1Executed) {
+                process1Executed = true;
+                document.getElementById('btnP1').disabled = true;
+                document.getElementById('btnP1').innerText = "Process 1 Applied";
+                uSlider.disabled = false; // Enable P2/3
+            }
+            applyProcess1();
+        }
+
+        // Apply Process 1 displacements
+        function applyProcess1() {
+            if (activeScenario === null) return;
+            
+            let rawDelta = 0;
+            if (p1DispMode === 'preset') {
+                rawDelta = p1Direction === 'away' ? 5 : 2;
+            } else {
+                rawDelta = parseFloat(p1Slider.value);
+                if (isNaN(rawDelta)) rawDelta = 0;
+            }
+            
+            document.getElementById('p1DeltaVal').innerText = rawDelta.toFixed(1);
+            
+            let dirMult = p1Direction === 'away' ? 1 : -1;
+            let delta = rawDelta * dirMult;
+
+            if (activeScenario === 3) {
+                postP1_D = initialD + delta;
+                postP1_u = initialU;
+                if (postP1_D <= postP1_u + 1) postP1_D = postP1_u + 1; // Prevent screen crossing lens
+            } else {
+                postP1_u = initialU + delta;
+                if (postP1_u <= f + 0.1) postP1_u = f + 0.1; 
+                postP1_D = initialD + (postP1_u - initialU); 
+            }
+
+            benchD = postP1_D;
+            u = postP1_u;
+            uSlider.value = u;
+            
+            history = [{ u: initialU, v: initialV, D: initialD }];
+            history.push({ u: postP1_u, v: (postP1_D - postP1_u), D: postP1_D });
+            
+            p23Path = []; // Reset trace
+            foundIntersections = []; 
+            updateRecordedImages();
+            
+            updateLab();
+        }
+
+        // Real-time slider update triggers execution automatically if not done
+        p1Slider.addEventListener('input', () => {
+            if (!process1Executed) {
+                process1Executed = true;
+                document.getElementById('btnP1').disabled = true;
+                document.getElementById('btnP1').innerText = "Process 1 Applied";
+                uSlider.disabled = false;
+            }
+            applyProcess1();
+        });
+
+        // P2/3 sliding
+        uSlider.addEventListener('input', function() {
+            u = parseFloat(this.value);
+            p23Path.push({ u: u, v: (benchD - u), D: benchD });
+            updateLab();
+        });
+
+        function updateLab() {
+            if (activeScenario === null) return;
+
+            const theoreticalV = 1 / (1/f - 1/u);
+            const physicalV = benchD - u;
+
+            document.getElementById('labelD').innerText = benchD.toFixed(1);
+            document.getElementById('statU').innerText = u.toFixed(1);
+            document.getElementById('statV').innerText = physicalV.toFixed(1);
+            document.getElementById('statD').innerText = benchD.toFixed(1);
+            document.getElementById('statMag').innerText = (-(physicalV/u)).toFixed(2);
+
+            isFocused = Math.abs(theoreticalV - physicalV) < 0.25;
+            
+            if (isFocused && process1Executed) {
+                const existingIdx = foundIntersections.findIndex(pt => Math.abs(pt.u - u) < 1.0);
+                const error = Math.abs(theoreticalV - physicalV);
+                
+                if (existingIdx >= 0) {
+                    // Update if better focus
+                    const prevPt = foundIntersections[existingIdx];
+                    const prevError = Math.abs((1/(1/f - 1/prevPt.u)) - prevPt.v);
+                    if (error < prevError) {
+                        foundIntersections[existingIdx] = { u: u, v: physicalV, D: benchD };
+                        updateRecordedImages();
+                    }
+                } else if (foundIntersections.length < 2) {
+                    // Add new found point
+                    foundIntersections.push({ u: u, v: physicalV, D: benchD });
+                    updateRecordedImages();
+                }
+            }
+
+            const badge = document.getElementById('focusBadge');
+            if (isFocused) {
+                badge.innerText = "Sharp Image";
+                badge.className = "px-3 py-1 rounded text-xs font-bold uppercase tracking-tighter bg-emerald-500 text-white shadow";
+            } else {
+                badge.innerText = "Blurred";
+                badge.className = "px-3 py-1 rounded text-xs font-bold uppercase tracking-tighter bg-amber-500 text-white shadow";
+            }
+
+            drawOptics(theoreticalV);
+            updateGraphs();
+        }
+
+        function drawOptics(theoreticalV) {
+            const w = canvas.width = canvas.offsetWidth;
+            const h = canvas.height = canvas.offsetHeight;
+            const midY = h/2;
+            const maxView = Math.max(benchD, u, initialD) + 15;
+            const scale = (w - 100) / maxView;
+            const startX = 50;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.beginPath();
+            ctx.strokeStyle = "#334155";
+            ctx.setLineDash([5, 5]);
+            ctx.moveTo(0, midY); ctx.lineTo(w, midY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (activeScenario === null) return;
+
+            const objX = startX;
+            const lensX = objX + u * scale;
+            const screenX = objX + benchD * scale;
+            const focusX = lensX + theoreticalV * scale;
+
+            ctx.strokeStyle = "#475569";
+            ctx.lineWidth = 1;
+            ctx.fillStyle = "#94a3b8";
+            for(let i=0; i<=maxView; i+=10) {
+                const x = startX + i * scale;
+                ctx.moveTo(x, h-20); ctx.lineTo(x, h-30);
+                ctx.fillText(i, x-5, h-35);
+            }
+            ctx.stroke();
+
+            ctx.fillStyle = "#e2e8f0";
+            ctx.fillRect(screenX, midY - 120, 6, 240);
+            ctx.fillStyle = "#f43f5e";
+            ctx.fillRect(objX - 3, midY - 40, 6, 40);
+
+            ctx.beginPath();
+            ctx.ellipse(lensX, midY, 12, 60, 0, 0, Math.PI*2);
+            ctx.fillStyle = "rgba(147, 197, 253, 0.3)";
+            ctx.fill();
+            ctx.strokeStyle = "#60a5fa";
+            ctx.stroke();
+
+            const objH = 40;
+            const imgH = objH * (theoreticalV/u);
+            ctx.strokeStyle = isFocused ? "rgba(251, 191, 36, 0.9)" : "rgba(251, 191, 36, 0.25)";
+            ctx.beginPath();
+            ctx.moveTo(objX, midY - objH);
+            ctx.lineTo(lensX, midY - objH);
+            ctx.lineTo(focusX, midY + imgH);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(objX, midY - objH);
+            ctx.lineTo(focusX, midY + imgH);
+            ctx.stroke();
+        }
+
+        function updateGraphs() {
+            if (activeScenario === null) return;
+            
+            // Calculate tightly zoomed bounds based on active points + predicted focus roots
+            let targetU1 = u, targetU2 = u;
+            if (benchD >= 4*f) {
+                const discriminant = Math.sqrt(benchD * benchD - 4 * benchD * f);
+                targetU1 = (benchD - discriminant) / 2;
+                targetU2 = (benchD + discriminant) / 2;
+            }
+            
+            let initTargetU1 = initialU, initTargetU2 = initialU;
+            if (initialD >= 4*f) {
+                const initDisc = Math.sqrt(initialD * initialD - 4 * initialD * f);
+                initTargetU1 = (initialD - initDisc) / 2;
+                initTargetU2 = (initialD + initDisc) / 2;
+            }
+
+            const paddingU = 3;
+            const allU = [initialU, postP1_u, u, targetU1, targetU2, initTargetU1, initTargetU2];
+            const uMinZoom = Math.max(f + 0.1, Math.min(...allU) - paddingU);
+            const uMaxZoom = Math.max(...allU) + paddingU;
+
+            const graphURange = Array.from({length: 200}, (_, i) => uMinZoom + i * (uMaxZoom - uMinZoom) / 200);
+            const theoryV = graphURange.map(ui => 1 / (1/f - 1/ui));
+            const theoryD = graphURange.map(ui => ui + 1 / (1/f - 1/ui));
+
+            const allV = [initialV, benchD - postP1_u, benchD - u, 1/(1/f - targetU1), 1/(1/f - targetU2)];
+            const vMinZoom = Math.max(0, Math.min(...allV) - 3);
+            const vMaxZoom = Math.max(...allV) + 3;
+
+            const allD = [initialD, postP1_D, benchD];
+            const dMinZoom = Math.max(0, Math.min(...allD) - 3);
+            const dMaxZoom = Math.max(...allD) + 3;
+
+            let p1U = [], p1V = [], p1D = [];
+            if (process1Executed && history.length >= 2) {
+                p1U = [history[0].u, history[1].u];
+                p1V = [history[0].v, history[1].v];
+                p1D = [history[0].D, history[1].D];
+            }
+
+            const p23U = p23Path.map(p => p.u);
+            const p23V = p23Path.map(p => p.v);
+            const p23D = p23Path.map(p => p.D);
+
+            const intersectU = foundIntersections.map(p => p.u);
+            const intersectV = foundIntersections.map(p => p.v);
+            const intersectD = foundIntersections.map(p => p.D);
+
+            Plotly.newPlot('vuGraph', [
+                { x: graphURange, y: theoryV, name: 'Sharp Condition', line: {color: '#cbd5e1', width: 2, dash: 'dash'} },
+                { x: [initialU], y: [initialV], mode: 'markers', marker: {color: '#94a3b8', size: 12, symbol: 'cross'}, name: 'Initial' },
+                { x: p1U, y: p1V, mode: 'lines', line: {color: '#f43f5e', width: 2.5}, name: 'Process 1' },
+                { x: p23U, y: p23V, mode: 'lines', line: {color: '#10b981', width: 2.5}, name: 'Process 2/3' },
+                { x: intersectU, y: intersectV, mode: 'markers', marker: {color: '#0ea5e9', size: 12, symbol: 'cross'}, name: 'Intersection' },
+                { x: process1Executed ? [history[1].u] : [], y: process1Executed ? [history[1].v] : [], mode: 'markers', marker: {color: '#f43f5e', size: 10, symbol: 'cross'}, name: 'Post-P1' },
+                { x: [u], y: [benchD - u], mode: 'markers', marker: {color: '#10b981', size: 14, symbol: 'cross'}, name: 'Current' }
+            ], { ...commonLayout, title: 'v (Screen-Lens) vs u (Obj-Lens)', xaxis: {title: 'u (cm)', range: [uMinZoom, uMaxZoom]}, yaxis: {title: 'v (cm)', range: [vMinZoom, vMaxZoom]} });
+
+            Plotly.newPlot('duGraph', [
+                { x: graphURange, y: theoryD, name: 'Sharp Condition', line: {color: '#cbd5e1', width: 2, dash: 'dash'} },
+                { x: [initialU], y: [initialD], mode: 'markers', marker: {color: '#94a3b8', size: 12, symbol: 'cross'}, name: 'Initial' },
+                { x: p1U, y: p1D, mode: 'lines', line: {color: '#f43f5e', width: 2.5}, name: 'Process 1' },
+                { x: p23U, y: p23D, mode: 'lines', line: {color: '#10b981', width: 2.5}, name: 'Process 2/3' },
+                { x: intersectU, y: intersectD, mode: 'markers', marker: {color: '#0ea5e9', size: 12, symbol: 'cross'}, name: 'Intersection' },
+                { x: process1Executed ? [history[1].u] : [], y: process1Executed ? [history[1].D] : [], mode: 'markers', marker: {color: '#f43f5e', size: 10, symbol: 'cross'}, name: 'Post-P1' },
+                { x: [u], y: [benchD], mode: 'markers', marker: {color: '#10b981', size: 14, symbol: 'cross'}, name: 'Current' }
+            ], { ...commonLayout, title: 'D (Obj-Screen) vs u (Obj-Lens)', xaxis: {title: 'u (cm)', range: [uMinZoom, uMaxZoom]}, yaxis: {title: 'D (cm)', range: [dMinZoom, dMaxZoom]} });
+        }
+
+        async function exportGraphs() {
+            try {
+                const vuImg = await Plotly.toImage('vuGraph', {format: 'png', width: 1200, height: 800});
+                const duImg = await Plotly.toImage('duGraph', {format: 'png', width: 1200, height: 800});
+                const link1 = document.createElement('a');
+                link1.download = 'v-u_graph.png'; link1.href = vuImg; link1.click();
+                const link2 = document.createElement('a');
+                link2.download = 'D-u_graph.png'; link2.href = duImg; link2.click();
+            } catch (err) { console.error("Export failed", err); }
+        }
+
+        document.getElementById('customF').addEventListener('input', checkInitReady);
+        document.getElementById('customU').addEventListener('input', checkInitReady);
+        window.onload = () => { showEmptyGraphs(); drawOptics(0); };
+    </script>
+</body>
+</html>
